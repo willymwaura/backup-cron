@@ -10,7 +10,7 @@ export const env = envsafe({
   }),
   BACKUP_CRON_SCHEDULE: str({
     desc: 'The cron schedule to run the backup on.',
-    default: '1 6 * * *',
+      default: '15 18 * * *',
     allowEmpty: true
   }),
   AWS_S3_ENDPOINT: str({
@@ -20,7 +20,7 @@ export const env = envsafe({
   }),
   RUN_ON_STARTUP: bool({
     desc: 'Run a backup on startup of this application',
-    default: false,
+    default: true,
     allowEmpty: true,
   })
 })
