@@ -8,18 +8,18 @@ import os from "os";
 
 import { env } from "./env";
 
-const uploadToS3 = async ({ name, path }: { name: string, path: string }) => {
+const uploadToS3 = async ({ name, path }: { name: string; path: string }) => {
   console.log("Uploading backup to S3...");
 
   const bucket = env.AWS_S3_BUCKET;
 
   const clientOptions: S3ClientConfig = {
-    region: env.AWS_S3_REGION
-  }
+    region: env.AWS_S3_REGION,
+  };
 
   if (env.AWS_S3_ENDPOINT) {
-    console.log(`Using custom endpoint: ${env.AWS_S3_ENDPOINT}`)
-    clientOptions['endpoint'] = env.AWS_S3_ENDPOINT;
+    console.log(`Using custom endpoint: ${env.AWS_S3_ENDPOINT}`);
+    clientOptions["endpoint"] = env.AWS_S3_ENDPOINT;
   }
 
   const client = new S3Client(clientOptions);
@@ -34,61 +34,70 @@ const uploadToS3 = async ({ name, path }: { name: string, path: string }) => {
   }).done();
 
   console.log("Backup uploaded to S3...");
-}
+};
 
 const dumpToFile = async (filePath: string) => {
   console.log("Dumping DB to file...");
 
   await new Promise((resolve, reject) => {
-    exec(`pg_dump --dbname=${env.BACKUP_DATABASE_URL} --format=tar | gzip > ${filePath}`, (error, stdout, stderr) => {
+    // 'set -o pipefail' ensures errors in pg_dump aren't swallowed by gzip
+    const command = `set -o pipefail; pg_dump --dbname="${env.BACKUP_DATABASE_URL}" --format=tar | gzip > "${filePath}"`;
+
+    exec(command, { shell: "/bin/sh" }, (error, stdout, stderr) => {
+      // Print stderr immediately to surface pg_dump authentication or connection errors
+      if (stderr && stderr.trim().length > 0) {
+        console.error("pg_dump stderr:", stderr.trimEnd());
+      }
+
       if (error) {
-        reject({ error: error, stderr: stderr.trimEnd() });
+        reject({ error, stderr: stderr.trimEnd() });
         return;
       }
 
-      // check if archive is valid and contains data
-      const isValidArchive = (execSync(`gzip -cd ${filePath} | head -c1`).length == 1) ? true : false;
-      if (isValidArchive == false) {
-        reject({ error: "Backup archive file is invalid or empty; check for errors above" });
-        return;
+      // Check if archive is valid and contains data
+      let isValidArchive = false;
+      try {
+        isValidArchive = execSync(`gzip -cd "${filePath}" | head -c1`).length === 1;
+      } catch (err) {
+        isValidArchive = false;
       }
 
-      // not all text in stderr will be a critical error, print the error / warning
-      if (stderr != "") {
-        console.log({ stderr: stderr.trimEnd() });
+      if (!isValidArchive) {
+        reject({
+          error: "Backup archive file is invalid or empty; check the stderr output above",
+          stderr: stderr.trimEnd(),
+        });
+        return;
       }
 
       console.log("Backup archive file is valid");
       console.log("Backup filesize:", filesize(statSync(filePath).size));
-
-      // if stderr contains text, let the user know that it was potently just a warning message
-      if (stderr != "") {
-        console.log(`Potential warnings detected; Please ensure the backup file "${path.basename(filePath)}" contains all needed data`);
-      }
 
       resolve(undefined);
     });
   });
 
   console.log("DB dumped to file...");
-}
+};
 
-const deleteFile = async (path: string) => {
+const deleteFile = async (filePath: string) => {
   console.log("Deleting file...");
   await new Promise((resolve, reject) => {
-    unlink(path, (err) => {
-      reject({ error: err });
-      return;
+    unlink(filePath, (err) => {
+      if (err) {
+        reject({ error: err });
+      } else {
+        resolve(undefined);
+      }
     });
-    resolve(undefined);
   });
-}
+};
 
 export const backup = async () => {
   console.log("Initiating DB backup...");
 
   const date = new Date().toISOString();
-  const timestamp = date.replace(/[:.]+/g, '-');
+  const timestamp = date.replace(/[:.]+/g, "-");
   const filename = `backup-${timestamp}.tar.gz`;
   const filepath = path.join(os.tmpdir(), filename);
 
@@ -97,4 +106,4 @@ export const backup = async () => {
   await deleteFile(filepath);
 
   console.log("DB backup complete...");
-}
+};
