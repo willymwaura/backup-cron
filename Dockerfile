@@ -1,4 +1,4 @@
-FROM alpine:3.20 AS build
+FROM alpine:edge AS build
 
 RUN apk add --no-cache nodejs npm
 
@@ -14,19 +14,20 @@ RUN npm install && \
     npm run build && \
     npm prune --production
 
-FROM alpine:3.20
+FROM alpine:edge
 
 WORKDIR /root
 
 COPY --from=build /root/node_modules ./node_modules
 COPY --from=build /root/dist ./dist
 
-ARG PG_VERSION='16'
+ARG PG_VERSION='18'
 
 RUN apk add --no-cache \
     postgresql${PG_VERSION}-client \
     nodejs \
-    npm
+    npm \
+    gzip
 
 CMD pg_isready --dbname="$BACKUP_DATABASE_URL" && \
     pg_dump --version && \
